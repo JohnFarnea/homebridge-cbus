@@ -373,20 +373,6 @@ CBusShutterRelayAccessory.prototype.processClientData = function (err, message) 
 					this.moveToPosition();
 				}
 		
-				//  move over 2 seconds
-/*				setTimeout(() => {
-					this.cachedTargetPosition = translated;
-					console.log(`processClientData - setting cachedTargetPosition to ${translated}% and state to STOPPED`);
-
-					// in many cases the shutter will still be travelling for a while, but unless/until we
-					// simulate the shutter relay, we won't know when it has stopped.
-					// so just assume it gets there immediately.
-					this.service.getCharacteristic(Characteristic.CurrentPosition)
-						.setValue(this.cachedTargetPosition, undefined, `event`);
-					this.service.getCharacteristic(Characteristic.PositionState)
-						.setValue(Characteristic.PositionState.STOPPED, undefined, `event`);
-				}, SPIN_TIME);
-			*/
 			}
 		}
 	}
