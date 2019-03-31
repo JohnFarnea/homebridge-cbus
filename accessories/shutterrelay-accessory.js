@@ -17,9 +17,6 @@ const SHUTTER_DOWN = 0;
 const SHUTTER_CLOSE_TOGGLE = 1;
 const SHUTTER_STOP = 2;
 
-const SPIN_TIME = 5000;
-const LOOP_TIME = 100;
-
 module.exports = function (_service, _characteristic, _accessory, _uuid) {
 	Service = _service;
 	Characteristic = _characteristic;
@@ -40,6 +37,9 @@ function CBusShutterRelayAccessory(platform, accessoryData) {
 	this.invert = accessoryData.invert || 'false';
 	this.upNetId = new CBusNetId(this.netId.project, this.netId.network, this.netId.application, this.accessoryData.upRelayId);
 	this.downNetId = new CBusNetId(this.netId.project, this.netId.network, this.netId.application, this.accessoryData.downRelayId);
+	this.spinTime = accessoryData.spintime || 20000;
+	this.extraSpinTime = accessoryData.extraSpinTime || 2000;
+	this.loopTime = this.spinTime / 100;
 
 	// prime the last known position of the blinds
 	// assume the blinds were closed, but as soon as we can issue a receiveLightStatus to see
@@ -226,28 +226,7 @@ CBusShutterRelayAccessory.prototype.setTargetPosition = function (newPosition, c
 		if (!this.isMoving) {
 			this.isMoving = true;
 			this.moveToPosition();
-			this.isMoving = false;
 		}
-
-		/*
-		if (newPosition > this.cachedTargetPosition) {
-			this._log(FILE_ID, `setTargetPosition`, `moving up`);
-			requiredDirection = Characteristic.PositionState.INCREASING;
-		} else if (newPosition < this.cachedTargetPosition) {
-			this._log(FILE_ID, `setTargetPosition`, `moving down`);
-			requiredDirection = Characteristic.PositionState.DECREASING;
-		} else {
-			this._log(FILE_ID, `setTargetPosition`, `moving nowhere`);
-			requiredDirection = Characteristic.PositionState.STOPPED;
-		}
-		if (requiredDirection !== Characteristic.PositionState.STOPPED) {
-			// immediately set the state to look like we're almost there
-			this._log(FILE_ID, `setTargetPosition`, `interim position = ${interimPosition} (was ${this.cachedTargetPosition})`);
-			this.cachedTargetPosition = interimPosition;
-			this.service.setCharacteristic(Characteristic.PositionState, requiredDirection);
-			this.service.setCharacteristic(Characteristic.CurrentPosition, interimPosition);
-		}
-		*/
 
 		// set up move to new shutter level
 		let shutterLevel = this.translateProportionalToShutter(newPosition);
@@ -256,21 +235,38 @@ CBusShutterRelayAccessory.prototype.setTargetPosition = function (newPosition, c
 		this.client.setLevel(this.netId, shutterLevel, () => {
 			this._log(FILE_ID, `setTargetPosition`, 'sent to client: shutter = ' + shutterLevel);
 
-			// keep the spinner moving for a little while to give the sense of movement
-			//			setTimeout(() => {
-			//				this.cachedTargetPosition = newPosition;
-			//				this._log(FILE_ID, `setTargetPosition`, `finishing movement; signalling stopping at ${this.cachedTargetPosition}`);
-			//				this.service.setCharacteristic(Characteristic.CurrentPosition, this.cachedTargetPosition);
-			//				this.service.setCharacteristic(Characteristic.PositionState, Characteristic.PositionState.STOPPED);
-			//			}, SPIN_TIME);
-
 			callback();
 		});
 	}
 };
 
+CBusShutterRelayAccessory.prototype.setRelays = function (direction, callback) {
+	if (direction == Characteristic.PositionState.STOPPED) {
+		this.client.setLevel(this.upNetId, 0, () => {
+			this.client.setLevel(this.downNetId, 0, () => {
+				callback();
+			});
+		});
+	}
+	if (direction == Characteristic.PositionState.INCREASING) {
+		this.client.setLevel(this.upNetId, 100, () => {
+			this.client.setLevel(this.downNetId, 0, () => {
+				callback();
+			});
+		});
+	}
+	if (direction == Characteristic.PositionState.DECREASING) {
+		this.client.setLevel(this.upNetId, 0, () => {
+			this.client.setLevel(this.downNetId, 100, () => {
+				callback();
+			});
+		});
+	}
+};
+
+
 CBusShutterRelayAccessory.prototype.moveToPosition = function () {
-	let requiredDirection;
+	let requiredDirection = Characteristic.PositionState.STOPPED;
 	// determine required direction
 	if (this.cachedTargetPosition > this.currentPosition) {
 		requiredDirection = Characteristic.PositionState.INCREASING;
@@ -278,41 +274,80 @@ CBusShutterRelayAccessory.prototype.moveToPosition = function () {
 	if (this.cachedTargetPosition < this.currentPosition) {
 		requiredDirection = Characteristic.PositionState.DECREASING;
 	}
-	if (requiredDirection != this.currentPositionState) {
+	if (requiredDirection != this.currentPositionState && requiredDirection != Characteristic.PositionState.STOPPED) {
 		if (this.currentPositionState != Characteristic.PositionState.STOPPED) {
 			// STOP, then move in correct direction
 			this._log(FILE_ID, 'setTargetPosition', 'STOPPING');
 			this.currentPositionState = Characteristic.PositionState.STOPPED;
+			this.setRelays(this.currentPositionState,() => {});
 			setTimeout(() => {
 				this._log(FILE_ID, 'setTargetPosition', 'STARTING in Direction ' + requiredDirection);
 				this.currentPositionState = requiredDirection;
-			}, 1000);
+				this.setRelays(this.currentPositionState,() => {});
+				// wait another 2 seconds before calling move again - as we may have just started in 1 direction and 
+				// call to move will stop if the user had changed direction twice in quick succession
+				setTimeout(() => {
+					// as we're moving - adjust the current position based on the 2s delay relative to the spin time
+					if (requiredDirection == Characteristic.PositionState.INCREASING) {
+						var newPos = this.currentPosition + Math.round(200000 / this.spinTime);
+						if (newPos > 100) newPos = 100;
+						this.currentPosition = newPos
+					}
+					if (requiredDirection == Characteristic.PositionState.DECREASING) {
+						var newPos = this.currentPosition - Math.round(200000 / this.spinTime);
+						if (newPos < 0) newPos = 0;
+						this.currentPosition = newPos
+					}
+					this._log(FILE_ID, 'setTargetPosition', `adjusted currentPosition to ${this.currentPosition} after delay`);
+					this.moveToPosition();
+				}, 2000)
+			}, 2000);
 		}
 		else {
 			this._log(FILE_ID, 'setTargetPosition', 'STARTING in Direction ' + requiredDirection);
 			this.currentPositionState = requiredDirection;
+			this.setRelays(this.currentPositionState,() => {});
 		}
 	}
-	if (this.currentPositionState == Characteristic.PositionState.INCREASING) {
+	if (this.currentPositionState == Characteristic.PositionState.INCREASING && this.currentPosition < 100) {
 		this.currentPosition = this.currentPosition + 1;
 	}
-	if (this.currentPositionState == Characteristic.PositionState.DECREASING) {
+	if (this.currentPositionState == Characteristic.PositionState.DECREASING && this.currentPosition > 0) {
 		this.currentPosition = this.currentPosition - 1;
 	}
 	this._log(FILE_ID, 'setTargetPosition', 'setting currentPosition to ' + this.currentPosition);
 	this.service.setCharacteristic(Characteristic.CurrentPosition, this.currentPosition);
 
 	if (this.currentPosition != this.cachedTargetPosition) {
-		setTimeout(() => {
-			this.moveToPosition();
-		}, LOOP_TIME);
+		if (this.currentPositionState != Characteristic.PositionState.STOPPED) {
+			setTimeout(() => {
+				this.moveToPosition();
+			}, this.loopTime);
+		}
 	} else {
-		this._log(FILE_ID, 'setTargetPosition', 'STOPPING');
-		this._log(FILE_ID, 'setTargetPosition', 'Setting current position to ' + this.cachedTargetPosition);
-		requiredDirection = Characteristic.PositionState.STOPPED;
-		this.currentPositionState = requiredDirection;
-		this.service.setCharacteristic(Characteristic.PositionState, requiredDirection);
-		this.service.setCharacteristic(Characteristic.CurrentPosition, this.cachedTargetPosition);
+		var timeOut = 1;
+		var cachedTargetBeforeDelay = this.cachedTargetPosition;
+		if (this.cachedTargetPosition == 0 || this.cachedTargetPosition == 100) {
+			timeOut = this.extraSpinTime;
+			this._log(FILE_ID, 'setTargetPosition', `delying for ${timeOut}ms before stopping`);
+		}
+		setTimeout(() => {
+			this._log(FILE_ID, 'setTargetPosition', 'STOPPING .. setting isMoving = false');
+			this._log(FILE_ID, 'setTargetPosition', 'Setting current position to ' + this.cachedTargetPosition);
+			requiredDirection = Characteristic.PositionState.STOPPED;
+			this.currentPositionState = requiredDirection;
+			this.setRelays(this.currentPositionState,() => {});
+			this.service.setCharacteristic(Characteristic.PositionState, requiredDirection);
+			this.service.setCharacteristic(Characteristic.CurrentPosition, this.cachedTargetPosition);
+			this.isMoving = false;
+			// did the user chagne the target position while we were in extended time?
+			// if so wait 2 seconds (after stop), then move
+			if (this.cachedTargetPosition != cachedTargetBeforeDelay) {
+				setTimeout(() => {
+					this.moveToPosition();
+				}, 2000)
+			}
+		}, timeOut);
 	}
 }
 
@@ -331,9 +366,15 @@ CBusShutterRelayAccessory.prototype.processClientData = function (err, message) 
 
 			if (this.cachedTargetPosition !== translated) {
 				this.service.getCharacteristic(Characteristic.TargetPosition).setValue(translated, undefined, `event`);
-
+				this.cachedTargetPosition = translated;
+				// move the blind
+				if (!this.isMoving) {
+					this.isMoving = true;
+					this.moveToPosition();
+				}
+		
 				//  move over 2 seconds
-				setTimeout(() => {
+/*				setTimeout(() => {
 					this.cachedTargetPosition = translated;
 					console.log(`processClientData - setting cachedTargetPosition to ${translated}% and state to STOPPED`);
 
@@ -345,6 +386,7 @@ CBusShutterRelayAccessory.prototype.processClientData = function (err, message) 
 					this.service.getCharacteristic(Characteristic.PositionState)
 						.setValue(Characteristic.PositionState.STOPPED, undefined, `event`);
 				}, SPIN_TIME);
+			*/
 			}
 		}
 	}
