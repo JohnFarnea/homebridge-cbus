@@ -118,6 +118,11 @@ CBusFanRelayAccessory.prototype.setOn = function (turnOn, callback, context) {
     }, 50);
 };
 
+CBusFanRelayAccessory.prototype._log = function (fileid, method, message) {
+	var d = new Date();
+	console.log(d.getSeconds() + '.' + d.getMilliseconds() + ' ' + method + ' - ' + message);
+}
+
 CBusFanRelayAccessory.prototype.getSpeed = function (callback) {
     this.client.receiveLevel(this.netId, message => {
         const speed = message.level;
@@ -172,7 +177,7 @@ CBusFanRelayAccessory.prototype.processClientData = function (err, message) {
         } else {
             this.speedC10tic.setValue(speed, undefined, `event`);
         }
-        // 60 18/22/26
+        this._log(FILE_ID, `processClientData`, `speed ${speed}%; `);
 
         var self = this;
         if (speed == 0) {
@@ -224,9 +229,10 @@ CBusFanRelayAccessory.prototype.processClientData = function (err, message) {
             });
         }
         if (speed > 67 && speed < 99) {
-            self.client.setLevel(self.netId,100, () => {});
+            self.client.setLevel(self.netId,99, () => {});
         }
-        if (speed >= 99) {
+        // DLTs seem to output 100 first when they ramp to a speed - so ignore 100!
+        if (speed == 99) {
             self.client.setLabel(self.netId, "Fan High", () => {});
             self.client.turnOff(self.netIdMed, function () {
                 setTimeout(() => {
