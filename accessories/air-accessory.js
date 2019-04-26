@@ -30,8 +30,8 @@ function CBusAirAccessory(platform, accessoryData) {
 
     //--------------------------------------------------
     // register the service
-    this.service = this.addService(new Service.Thermostat(this.name));
-    this.service.addCharacteristic(Characteristic.On);
+//    this.service = this.addService(new Service.Thermostat(this.name));
+    this.service = this.addService(new Service.Switch(this.name));
 
     this.currentTemperature = 20;
     this.targetTemperature = 24;
@@ -39,26 +39,28 @@ function CBusAirAccessory(platform, accessoryData) {
     this.targetState = Characteristic.TargetHeatingCoolingState.OFF;
     this.isOn = false;
 
+    this.service.addCharacteristic(Characteristic.CurrentTemperature);
 	this.service.getCharacteristic(Characteristic.CurrentTemperature)
 		.on('get', this.getCurrentTemperature.bind(this));
 
+    this.service.addCharacteristic(Characteristic.TargetTemperature);
     this.service.getCharacteristic(Characteristic.TargetTemperature)
         .on('get', this.getTargetTemperature.bind(this))
         .on('set', this.setTargetTemperature.bind(this));
         
+    this.service.addCharacteristic(Characteristic.CurrentHeatingCoolingState);
     this.service.getCharacteristic(Characteristic.CurrentHeatingCoolingState)
 		.on('get', this.getCurrentState.bind(this));
 
+    this.service.addCharacteristic(Characteristic.TargetHeatingCoolingState);
     this.service.getCharacteristic(Characteristic.TargetHeatingCoolingState)
         .on('get', this.getTargetState.bind(this))
         .on('set', this.setTargetState.bind(this));
 
     this.service.getCharacteristic(Characteristic.On)
-		.on('get', this.getOn.bind(this))
-		.on('set', this.setOn.bind(this));
-
-
-
+        .on('get', this.getOn.bind(this))
+        .on('set', this.setOn.bind(this));
+            
     //--------------------------------------------------
     // prime the air state
 
