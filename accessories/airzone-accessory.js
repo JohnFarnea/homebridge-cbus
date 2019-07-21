@@ -48,11 +48,12 @@ function CBusAirZoneAccessory(platform, accessoryData) {
 
 CBusAirZoneAccessory.prototype.getOn = function (callback) {
     // get the level from the AirconAPI, then set the netId
-    this.client.receiveLevel(this.netId, message => {
-        this.isOn = message.level > 0;
-        this._log(FILE_ID, `getOn`, `status = '${this.isOn ? `on` : `off`}'`);
+    this.airApi(`zone/${this.zone}`, (resp) => {
+        var state = JSON.parse(resp).stateString;
+        this._log(FILE_ID, 'getOn', `API Response State Zone ${this.zone} = ${state}`);
+        this.isOn = (state == "Open");
         callback(false, this.isOn ? 1 : 0);
-    }, `getOn`);
+    });
 };
 
 CBusAirZoneAccessory.prototype.setOn = function (turnOn, callback, context) {
