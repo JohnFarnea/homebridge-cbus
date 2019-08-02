@@ -40,6 +40,7 @@ module.exports = function (homebridge) {
 	const CBusAirAccessory = require('./accessories/air-accessory.js')(Service, Characteristic, CBusAccessory, uuid);
 	const CBusAirPowerAccessory = require('./accessories/airpower-accessory.js')(Service, Characteristic, CBusAccessory, uuid);
 	const CBusAirZoneAccessory = require('./accessories/airzone-accessory.js')(Service, Characteristic, CBusAccessory, uuid);
+	const CBusAirZoneTempAccessory = require('./accessories/airzonetemp-accessory.js')(Service, Characteristic, CBusAccessory, uuid);
 	const CBusHueAccessory = require('./accessories/hue-accessory.js')(Service, Characteristic, CBusAccessory, uuid);
 
 	// fix inheritance, since we've loaded our classes before the Accessory class has been loaded
@@ -57,6 +58,7 @@ module.exports = function (homebridge) {
 	cbusUtils.fixInheritance(CBusAirAccessory, CBusAccessory);
 	cbusUtils.fixInheritance(CBusAirPowerAccessory, CBusAccessory);
 	cbusUtils.fixInheritance(CBusAirZoneAccessory, CBusAccessory);
+	cbusUtils.fixInheritance(CBusAirZoneTempAccessory, CBusAccessory);
 	cbusUtils.fixInheritance(CBusHueAccessory, CBusAccessory);
 
 	// register ourself with homebridge
@@ -77,6 +79,7 @@ module.exports = function (homebridge) {
 		air: CBusAirAccessory,
 		airpower: CBusAirPowerAccessory,
 		airzone: CBusAirZoneAccessory,
+		airzonetemp: CBusAirZoneTempAccessory,
 		hue: CBusHueAccessory
 	};
 };
